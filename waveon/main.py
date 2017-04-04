@@ -7,29 +7,42 @@ import numpy as np
 from scipy.io.wavfile import read as scipy_read
 
 
+CENTER_CHANNEL = -1
+
 class MemoryManager(object):
     READING_ON_HARD_DISK = False
+    WAV_HEADER_SIZE = 44
 
-    def __init__(self, filepaths):
+    def __init__(self, center_wav_filepath, filepaths):
         self.mmap = None
         self.filepaths = filepaths
+        self.center_wav_filepath = center_wav_filepath
         self.cursors   = np.zeros(len(filepaths), dtype = np.int)
 
-        self.outpath   = "tmp"
-        self.open(0)
+        self.setOutputWavPath("tmp.wav")
+
+    def setOutputWavPath(self, filepath):
+        self.outpath   = filepath
+        self.open(CENTER_CHANNEL, raw = True)
+        assert(MemoryManager.WAV_HEADER_SIZE % self.mmap.itemsize == 0)
+        self.header_size = MemoryManager.WAV_HEADER_SIZE / self.mmap.itemsize
+        self.header = np.copy(self.mmap[:self.header_size])
         self.outshape  = self.mmap.shape
         self.outdtype  = self.mmap.dtype
+        self.write(self.header, 0)
         self.close()
-    def setOutputWavPath(self, filepath):
-        self.outpath = filepath
     def getSignalFromFilepath(self, filepath):
         framerate, signal = scipy_read(filepath, mmap = True)
         assert(len(signal.shape) == 1)
         return signal
-    def open(self, i):
+    def open(self, i, raw = False):
         if MemoryManager.READING_ON_HARD_DISK:
             self.close()
-        self.mmap = self.getSignalFromFilepath(self.filepaths[i])
+        filepath = self.center_wav_filepath if (i == CENTER_CHANNEL) else self.filepaths[i]
+        if not raw:
+            self.mmap = self.getSignalFromFilepath(filepath)
+        else:
+            self.mmap = np.memmap(filepath)
         MemoryManager.READING_ON_HARD_DISK = True
     def close(self):
         del self.mmap
@@ -39,11 +52,13 @@ class MemoryManager(object):
             self.close()
         self.mmap = np.memmap(
             self.outpath, 
-            mode   = "w+",
+            mode   = "r+",
             offset = offset,
             dtype  = self.outdtype,
             shape  = self.outshape)
         self.mmap[:len(signal)] = signal[:]
+        self.mmap.flush()
+
 
 
 def main():
@@ -58,13 +73,13 @@ def main():
     filepaths = [os.path.join(wav_folder, filename) for filename in os.listdir(wav_folder)]
 
     """ EXAMPLE OF USE """
-    manager = MemoryManager([center_wav_filepath] + filepaths)
-    manager.open(0) # Opens the center channel
-    manager.open(1) # Closes the center channel and opens the L channel
+    manager = MemoryManager(center_wav_filepath, filepaths)
+    manager.open(CENTER_CHANNEL) # Opens the center channel
+    manager.open(0) # Closes the center channel and opens the L channel
     # manager.mmap contains the data samples of the current channel
 
-    manager.setOutputWavPath(os.path.join(wav_folder, "tmp"))
-    manager.write(np.arange(45), 0) # Write 45 samples in the output
+    white_noise = np.random.rand(1000000) * 500
+    manager.write(white_noise, 80) # Write a white noise in the output file
     # This is still raw data, a wave header must be written first
 
 
