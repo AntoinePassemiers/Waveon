@@ -27,6 +27,12 @@ def main():
     for i in range(len(memory) / segment_size):
         memory.open(CENTER_CHANNEL)
         segment = memory[i*segment_size:(i+1)*segment_size] # Load segment from center channel
+        memory.open(0)
+        left_channel = memory[i*segment_size:(i+1)*segment_size]
+        segment -= 5 * left_channel
+        memory.open(1)
+        right_channel = memory[i*segment_size:(i+1)*segment_size]
+        segment -= 5 * right_channel
         memory.write(segment, offset = i*segment_size) # Copy segment into the output file at position i*segment_size
 
 
